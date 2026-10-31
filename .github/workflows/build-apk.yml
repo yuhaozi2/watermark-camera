@@ -1,0 +1,25 @@
+name: Build APK
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+      - run: flutter pub get
+      - run: flutter analyze lib/pages/watermark_camera_page.dart lib/pages/puzzle_page.dart || true
+      - run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: watermark-camera-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
