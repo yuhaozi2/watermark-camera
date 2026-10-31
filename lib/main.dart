@@ -7,7 +7,7 @@ class WatermarkApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '水印相机',
-      theme: ThemeData(useMaterialDesign: true, colorSchemeSeed: Colors.blue),
+      theme: ThemeData(useMaterial3: true, colorSchemeSeed: Colors.blue),
       home: const WatermarkCameraPage(),
     );
   }
