@@ -1,0 +1,21 @@
+name: watermark_camera
+description: "水印相机 Flutter 干净重写版：拍照、导入、时间地点水印、考勤、工程、会议、监理等模板"
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  image_picker: ^1.0.7
+  geolocator: ^11.0.0
+  permission_handler: ^11.0.0
+  path_provider: ^2.1.0
+  share_plus: ^7.0.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+flutter:
+  uses-material-design: true
