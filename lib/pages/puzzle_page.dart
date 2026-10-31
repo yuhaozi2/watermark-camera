@@ -15,6 +15,12 @@ import 'watermark_camera_page.dart';
 //   → 1px 分隔线 #E9ECF3 → 同一行：左 汇报人（标签加粗），右 日期（yyyy年MM月dd日）+ 天气，字色 #50607A、14 号
 //   → 自定义条目（检查总结 / 问题描述 / 问题详情）：标题加粗 14 号 #50607A，内容 14 号 #50607A，背景 #F6F7FB，顶部 1px 分隔线
 //   → 头下装饰线：2 白 / 2 主题色 / 2 白 / 4 主题色 → 照片区（间距 8）
+// 会议纪要（meeting，id 1008）按 layout.xml 精确排：
+//   品牌 110x34 + Logo 34x34 → 标题居中 32 号主题色 #FF371C 加粗（原包无默认内容，不出内容行）
+//   → 同一行：左 主持人，右 日期 yyyy年MM月dd日，字色 #232325、14 号 → 2px 主题色线
+//   → 带边框的表（左右 + 顶部 1px 线，线色 #232325）：记录人 / 参与人 / 会议地点 / 会议主题 / 会议内容，
+//     每行 8 边距、行间 1px 线，标题色 #A8A8A8、内容色 #232325、14 号，标题后 3 个空格分隔
+//   → 照片区（间距 8）。注意：原 layout.xml 头里没有天气行，天气只在 string.json 字段里，不进头预览。
 class PuzzlePage extends StatefulWidget {
   const PuzzlePage({super.key});
   @override
@@ -30,7 +36,7 @@ String _todayCn() {
 class _PuzzlePageState extends State<PuzzlePage> {
   final picker = ImagePicker();
   final boundaryKey = GlobalKey();
-  String template = '工作汇报拼图';
+  String template = '会议';
   final List<XFile> photos = [];
   final Map<String, String> fieldValues = {};
 
@@ -41,12 +47,15 @@ class _PuzzlePageState extends State<PuzzlePage> {
   }
 
   bool get isWorkReport => template == '工作汇报拼图';
+  bool get isMeeting => template == '会议';
   List<String> get inputFields {
     if (isWorkReport) return const ['汇报人', '日期', '天气', '检查总结', '问题描述', '问题详情'];
+    if (isMeeting) return const ['主持人', '日期', '记录人', '参与人', '会议地点', '会议主题', '会议内容'];
     return puzzleSpecs[template]?.fields ?? [];
   }
 
   List<String> get workItems => const ['检查总结', '问题描述', '问题详情'];
+  List<String> get meetingTableRows => const ['记录人', '参与人', '会议地点', '会议主题', '会议内容'];
 
   Future<void> pickMulti() async {
     final list = await picker.pickMultiImage();
@@ -121,6 +130,48 @@ class _PuzzlePageState extends State<PuzzlePage> {
     ]);
   }
 
+  Widget _meetingHeader() {
+    const contentColor = Color(0xFF232325);
+    const titleColor = Color(0xFFA8A8A8);
+    const lineColor = Color(0xFF232325);
+    const themeColor = Color(0xFFFF371C);
+    final host = fieldValues['主持人'] ?? '';
+    final date = fieldValues['日期'] ?? _todayCn();
+    final rows = meetingTableRows;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Container(width: 110, height: 34, alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)), child: const Text('品牌图片', style: TextStyle(fontSize: 12, color: Colors.grey))),
+        const SizedBox(width: 8),
+        Container(width: 34, height: 34, alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)), child: const Text('Logo', style: TextStyle(fontSize: 10, color: Colors.grey))),
+      ]),
+      const SizedBox(height: 5),
+      const Text('会议纪要', textAlign: TextAlign.center, style: TextStyle(color: themeColor, fontSize: 32, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 5),
+      Row(children: [
+        Expanded(child: Text('主持人：$host', style: const TextStyle(fontSize: 14, color: contentColor))),
+        Expanded(child: Text(date, textAlign: TextAlign.right, style: const TextStyle(fontSize: 14, color: contentColor))),
+      ]),
+      const SizedBox(height: 8),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Container(height: 2, color: themeColor)),
+      const SizedBox(height: 8),
+      // 带边框的表：左右 + 顶部 1px 线，行间 1px 线，标题 #A8A8A8、内容 #232325
+      Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: const BoxDecoration(border: Border(left: BorderSide(color: lineColor, width: 1), right: BorderSide(color: lineColor, width: 1), top: BorderSide(color: lineColor, width: 1), bottom: BorderSide(color: lineColor, width: 1))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          for (int i = 0; i < rows.length; i++) ...[
+            Padding(
+              padding: const EdgeInsets.all(8),
+              child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, color: contentColor), children: [TextSpan(text: '${rows[i]}   ', style: const TextStyle(color: titleColor)), TextSpan(text: fieldValues[rows[i]] ?? '')])),
+            ),
+            if (i < rows.length - 1) Container(height: 1, color: lineColor),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 12),
+    ]);
+  }
+
   Widget _genericHeader(TemplateSpec spec, Color themeColor) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
@@ -174,13 +225,13 @@ class _PuzzlePageState extends State<PuzzlePage> {
               color: Colors.white,
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (isWorkReport) _workReportHeader(themeColor) else if (spec != null) _genericHeader(spec, themeColor),
+                if (isWorkReport) _workReportHeader(themeColor) else if (isMeeting) _meetingHeader() else if (spec != null) _genericHeader(spec, themeColor),
                 if (photos.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('还没有照片，点上面添加照片'))),
                 for (final p in photos) ...[
                   Image.file(File(p.path), height: 220, fit: BoxFit.cover),
                   const SizedBox(height: 8),
                 ],
-                if (!isWorkReport && spec != null)
+                if (!isWorkReport && !isMeeting && spec != null)
                   for (final f in spec.fields)
                     if ((fieldValues[f] ?? '').isNotEmpty)
                       Container(padding: const EdgeInsets.all(8), margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFFF6F7FB), borderRadius: BorderRadius.circular(8)), child: Text('$f：${fieldValues[f]}', style: const TextStyle(fontSize: 14))),
@@ -188,7 +239,7 @@ class _PuzzlePageState extends State<PuzzlePage> {
             ),
           ),
           const SizedBox(height: 12),
-          const Text('说明：多图拼图为干净重写版，头 + 字段 + 照片纵排，不含原厂图片、装饰、VIP、云端。工作汇报拼图已按原 layout.xml 的头顺序、颜色、字号排版。', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text('说明：多图拼图为干净重写版，头 + 字段 + 照片纵排，不含原厂图片、装饰、VIP、云端。工作汇报、会议纪要拼图已按原 layout.xml 的头顺序、颜色、字号排版。', style: TextStyle(color: Colors.grey, fontSize: 12)),
         ]),
       ),
     );
