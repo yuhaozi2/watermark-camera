@@ -19,8 +19,8 @@ jobs:
       - run: flutter create --platforms=android --project-name watermark_camera .
       - run: flutter pub get
       - run: flutter analyze lib/pages/watermark_camera_page.dart lib/pages/puzzle_page.dart || true
-      - run: flutter build apk --debug
+      - run: flutter build apk --debug --split-per-abi
       - uses: actions/upload-artifact@v4
         with:
           name: watermark-camera-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          path: build/app/outputs/flutter-apk/*.apk
