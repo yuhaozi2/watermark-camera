@@ -21,6 +21,12 @@ import 'watermark_camera_page.dart';
 //   → 带边框的表（左右 + 顶部 1px 线，线色 #232325）：记录人 / 参与人 / 会议地点 / 会议主题 / 会议内容，
 //     每行 8 边距、行间 1px 线，标题色 #A8A8A8、内容色 #232325、14 号，标题后 3 个空格分隔
 //   → 照片区（间距 8）。注意：原 layout.xml 头里没有天气行，天气只在 string.json 字段里，不进头预览。
+// 监理日志（supervision，id 1007）按 layout.xml 精确排：
+//   品牌 110x34 + Logo 34x34 → 标题居中 32 号主题色 #2E5BFF 加粗（原包无默认内容，不出内容行）
+//   → 带边框的表（左右 + 顶部 1px 主题色线）：日期（整行，dateFormat 为 yyyy.MM.dd）→ 上午天气 | 下午天气（中间 1px 竖线）
+//     → 记录人 | 审核人（中间 1px 竖线）→ 4 条自定义条目：施工情况记录 / 今日现场情况 / 今日施工质量方面 / 今日协调事项及重要事项，
+//     每行 8 边距、行间 1px 主题色线，标题色主题色、内容色 #232325、14 号
+//   → 表下 10 白 → 装饰线 2 主题色 / 2 白 / 4 主题色 → 照片区（间距 8）。原 string.json 里的汇报人、天气不在头里，不进预览。
 class PuzzlePage extends StatefulWidget {
   const PuzzlePage({super.key});
   @override
@@ -33,10 +39,16 @@ String _todayCn() {
   return '${d.year}年${p(d.month)}月${p(d.day)}日';
 }
 
+String _todayDot() {
+  final d = DateTime.now();
+  String p(int n) => n.toString().padLeft(2, '0');
+  return '${d.year}.${p(d.month)}.${p(d.day)}';
+}
+
 class _PuzzlePageState extends State<PuzzlePage> {
   final picker = ImagePicker();
   final boundaryKey = GlobalKey();
-  String template = '会议';
+  String template = '监理巡检';
   final List<XFile> photos = [];
   final Map<String, String> fieldValues = {};
 
@@ -48,14 +60,17 @@ class _PuzzlePageState extends State<PuzzlePage> {
 
   bool get isWorkReport => template == '工作汇报拼图';
   bool get isMeeting => template == '会议';
+  bool get isSupervision => template == '监理巡检';
   List<String> get inputFields {
     if (isWorkReport) return const ['汇报人', '日期', '天气', '检查总结', '问题描述', '问题详情'];
     if (isMeeting) return const ['主持人', '日期', '记录人', '参与人', '会议地点', '会议主题', '会议内容'];
+    if (isSupervision) return const ['日期', '上午天气', '下午天气', '记录人', '审核人', '施工情况记录', '今日现场情况', '今日施工质量方面', '今日协调事项及重要事项'];
     return puzzleSpecs[template]?.fields ?? [];
   }
 
   List<String> get workItems => const ['检查总结', '问题描述', '问题详情'];
   List<String> get meetingTableRows => const ['记录人', '参与人', '会议地点', '会议主题', '会议内容'];
+  List<String> get supervisionItems => const ['施工情况记录', '今日现场情况', '今日施工质量方面', '今日协调事项及重要事项'];
 
   Future<void> pickMulti() async {
     final list = await picker.pickMultiImage();
@@ -172,6 +187,60 @@ class _PuzzlePageState extends State<PuzzlePage> {
     ]);
   }
 
+  Widget _supervisionHeader() {
+    const contentColor = Color(0xFF232325);
+    const themeColor = Color(0xFF2E5BFF);
+    // 原 layout 的 dateFormat 是 yyyy.MM.dd，输入框默认是中文日期时在这里转成点格式显示
+    final rawDate = fieldValues['日期'] ?? _todayDot();
+    final date = rawDate.replaceAll('年', '.').replaceAll('月', '.').replaceAll('日', '');
+    Widget pair(String leftTitle, String rightTitle) {
+      return Row(children: [
+        Expanded(child: Padding(padding: const EdgeInsets.all(8), child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, color: contentColor), children: [TextSpan(text: '$leftTitle   ', style: const TextStyle(color: themeColor)), TextSpan(text: fieldValues[leftTitle] ?? '')])))),
+        Container(width: 1, color: themeColor),
+        Expanded(child: Padding(padding: const EdgeInsets.all(8), child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, color: contentColor), children: [TextSpan(text: '$rightTitle   ', style: const TextStyle(color: themeColor)), TextSpan(text: fieldValues[rightTitle] ?? '')])))),
+      ]);
+    }
+
+    final items = supervisionItems;
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Container(width: 110, height: 34, alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)), child: const Text('品牌图片', style: TextStyle(fontSize: 12, color: Colors.grey))),
+        const SizedBox(width: 8),
+        Container(width: 34, height: 34, alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)), child: const Text('Logo', style: TextStyle(fontSize: 10, color: Colors.grey))),
+      ]),
+      const SizedBox(height: 5),
+      const Text('监理日志', textAlign: TextAlign.center, style: TextStyle(color: themeColor, fontSize: 32, fontWeight: FontWeight.bold)),
+      const SizedBox(height: 5),
+      Container(
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: const BoxDecoration(border: Border(left: BorderSide(color: themeColor, width: 1), right: BorderSide(color: themeColor, width: 1), top: BorderSide(color: themeColor, width: 1), bottom: BorderSide(color: themeColor, width: 1))),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Padding(padding: const EdgeInsets.all(8), child: RichText(text: TextSpan(style: const TextStyle(fontSize: 14, color: contentColor), children: [const TextSpan(text: '日期   ', style: TextStyle(color: themeColor)), TextSpan(text: date)]))),
+          Container(height: 1, color: themeColor),
+          pair('上午天气', '下午天气'),
+          Container(height: 1, color: themeColor),
+          pair('记录人', '审核人'),
+          Container(height: 1, color: themeColor),
+          for (int i = 0; i < items.length; i++) ...[
+            Padding(padding: const EdgeInsets.all(8), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(items[i], style: const TextStyle(fontSize: 14, color: themeColor)),
+              const SizedBox(height: 2),
+              Text(fieldValues[items[i]] ?? '', style: const TextStyle(fontSize: 14, color: contentColor)),
+            ])),
+            if (i < items.length - 1) Container(height: 1, color: themeColor),
+          ],
+        ]),
+      ),
+      const SizedBox(height: 10),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 8), child: Column(children: [
+        Container(height: 2, color: themeColor),
+        Container(height: 2, color: Colors.white),
+        Container(height: 4, color: themeColor),
+      ])),
+      const SizedBox(height: 8),
+    ]);
+  }
+
   Widget _genericHeader(TemplateSpec spec, Color themeColor) {
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       Row(children: [
@@ -225,13 +294,13 @@ class _PuzzlePageState extends State<PuzzlePage> {
               color: Colors.white,
               padding: const EdgeInsets.all(12),
               child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                if (isWorkReport) _workReportHeader(themeColor) else if (isMeeting) _meetingHeader() else if (spec != null) _genericHeader(spec, themeColor),
+                if (isWorkReport) _workReportHeader(themeColor) else if (isMeeting) _meetingHeader() else if (isSupervision) _supervisionHeader() else if (spec != null) _genericHeader(spec, themeColor),
                 if (photos.isEmpty) const Center(child: Padding(padding: EdgeInsets.all(24), child: Text('还没有照片，点上面添加照片'))),
                 for (final p in photos) ...[
                   Image.file(File(p.path), height: 220, fit: BoxFit.cover),
                   const SizedBox(height: 8),
                 ],
-                if (!isWorkReport && !isMeeting && spec != null)
+                if (!isWorkReport && !isMeeting && !isSupervision && spec != null)
                   for (final f in spec.fields)
                     if ((fieldValues[f] ?? '').isNotEmpty)
                       Container(padding: const EdgeInsets.all(8), margin: const EdgeInsets.only(bottom: 8), decoration: BoxDecoration(color: const Color(0xFFF6F7FB), borderRadius: BorderRadius.circular(8)), child: Text('$f：${fieldValues[f]}', style: const TextStyle(fontSize: 14))),
@@ -239,7 +308,7 @@ class _PuzzlePageState extends State<PuzzlePage> {
             ),
           ),
           const SizedBox(height: 12),
-          const Text('说明：多图拼图为干净重写版，头 + 字段 + 照片纵排，不含原厂图片、装饰、VIP、云端。工作汇报、会议纪要拼图已按原 layout.xml 的头顺序、颜色、字号排版。', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          const Text('说明：多图拼图为干净重写版，头 + 字段 + 照片纵排，不含原厂图片、装饰、VIP、云端。工作汇报、会议纪要、监理日志拼图已按原 layout.xml 的头顺序、颜色、字号排版。', style: TextStyle(color: Colors.grey, fontSize: 12)),
         ]),
       ),
     );
