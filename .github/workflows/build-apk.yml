@@ -16,6 +16,7 @@ jobs:
         with:
           flutter-version: '3.24.5'
           channel: stable
+      - run: flutter create --platforms=android --project-name watermark_camera .
       - run: flutter pub get
       - run: flutter analyze lib/pages/watermark_camera_page.dart lib/pages/puzzle_page.dart || true
       - run: flutter build apk --debug
