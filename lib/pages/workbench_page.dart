@@ -1,5 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // 团队工作台：按 REA 挖到的原版模块清单重构的功能骨架（本地版）。
@@ -22,8 +25,8 @@ Future<String> loadTeamName() async {
   return prefs.getString('wm_team_name') ?? '';
 }
 
-// 每次生成水印照片时记一条考勤：日期、时间、模板、地点。
-Future<void> recordAttendance({required String template, required String location}) async {
+// 每次生成水印照片时记一条考勤：日期、时间、模板、地点、防伪码。
+Future<void> recordAttendance({required String template, required String location, String antiFraud = ''}) async {
   final prefs = await SharedPreferences.getInstance();
   final raw = prefs.getString('wm_attendance') ?? '[]';
   final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
@@ -34,6 +37,7 @@ Future<void> recordAttendance({required String template, required String locatio
     'time': '${p(now.hour)}:${p(now.minute)}:${p(now.second)}',
     'template': template,
     'location': location,
+    'code': antiFraud,
   });
   await prefs.setString('wm_attendance', jsonEncode(list));
 }
@@ -96,6 +100,45 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
   Future<void> _saveInspection() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wm_inspection', jsonEncode(inspection));
+  }
+
+  String _csvCell(String v) => '"${v.replaceAll('"', '""')}"';
+
+  Future<void> _exportCsv(String filename, String content) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsString(content);
+      await Share.shareXFiles([XFile(file.path)], text: filename);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败：$e')));
+    }
+  }
+
+  void _exportAttendanceSummary() {
+    final grouped = _groupAttendance();
+    final dates = grouped.keys.toList()..sort();
+    final buf = StringBuffer('日期,上班时间,下班时间,照片数\n');
+    for (final d in dates) {
+      final list = grouped[d]!;
+      buf.writeln([d, list.first['time'].toString(), list.last['time'].toString(), list.length.toString()].map((e) => _csvCell(e)).join(','));
+    }
+    _exportCsv('考勤统计.csv', buf.toString());
+  }
+
+  void _exportWatermarkData() {
+    final buf = StringBuffer('日期,时间,模板,地点,防伪码\n');
+    for (final r in attendance) {
+      final code = (r['code'] ?? '') as String;
+      buf.writeln([
+        (r['date'] ?? '').toString(),
+        (r['time'] ?? '').toString(),
+        (r['template'] ?? '').toString(),
+        (r['location'] ?? '').toString(),
+        code.isNotEmpty ? code : antiFraudCode('${r['date']} ${r['time']}|${r['location']}'),
+      ].map((e) => _csvCell(e)).join(','));
+    }
+    _exportCsv('水印数据.csv', buf.toString());
   }
 
   // 考勤按日期分组：上班=当天最早拍照，下班=当天最晚拍照（原版规则）
@@ -170,6 +213,14 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 const Text('考勤规则：上班=当天最早拍照时间，下班=当天最晚拍照时间', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Card(child: ListTile(title: Text('共 ${dates.length} 天 · ${attendance.length} 张照片'), subtitle: const Text('统计口径与原版一致：只按本机生成的水印照片统计'))),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: ElevatedButton(onPressed: attendance.isEmpty ? null : _exportAttendanceSummary, child: const Text('导出考勤统计'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: ElevatedButton(onPressed: attendance.isEmpty ? null : _exportWatermarkData, child: const Text('导出水印数据'))),
+                ]),
                 const SizedBox(height: 12),
                 if (dates.isEmpty) const Text('还没有考勤记录，去拍一张带水印的照片就会记一条。'),
                 for (final d in dates)
