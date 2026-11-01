@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'watermark_camera_page.dart';
 
@@ -118,6 +120,31 @@ class _PuzzlePageState extends State<PuzzlePage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('拼图已生成，可在分享面板里保存')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败：$e')));
+    }
+  }
+
+  // 导出 PDF：把当前拼图整页渲染成图片放进一页 PDF（原版 puzzle_pdf 的同类做法）。
+  // PDF 里不直接排中文（标准字体不支持中文会乱码），中文标题/字段都在图片里，PDF 只做载体。
+  Future<void> savePdf() async {
+    try {
+      final boundary = boundaryKey.currentContext!.findRenderObject() as RenderRepaintBoundary;
+      final img = await boundary.toImage(pixelRatio: 2.0);
+      final bytes = await img.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) return;
+      final png = bytes.buffer.asUint8List();
+      final doc = pw.Document();
+      final image = pw.MemoryImage(png);
+      doc.addPage(pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        build: (context) => pw.Center(child: pw.Image(image, fit: pw.BoxFit.contain)),
+      ));
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/puzzle_${DateTime.now().millisecondsSinceEpoch}.pdf');
+      await file.writeAsBytes(await doc.save());
+      await Share.shareXFiles([XFile(file.path)], text: '拼图PDF');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('拼图 PDF 已生成，可在分享面板里保存')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出 PDF 失败：$e')));
     }
   }
 
@@ -440,6 +467,12 @@ class _PuzzlePageState extends State<PuzzlePage> {
             Expanded(child: ElevatedButton(onPressed: pickMulti, child: Text('添加照片（已选 ${photos.length} 张）'))),
             const SizedBox(width: 8),
             Expanded(child: ElevatedButton(onPressed: photos.isEmpty ? null : save, child: const Text('生成拼图并分享'))),
+          ]),
+          const SizedBox(height: 8),
+          Row(children: [
+            Expanded(child: OutlinedButton(onPressed: savePdf, child: const Text('导出拼图 PDF'))),
+            const SizedBox(width: 8),
+            const Expanded(child: SizedBox()),
           ]),
           const SizedBox(height: 16),
           RepaintBoundary(
