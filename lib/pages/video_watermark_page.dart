@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
-import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/return_code.dart';
+import 'package:ffmpeg_kit_flutter_new_min/ffmpeg_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_min/ffprobe_kit.dart';
+import 'package:ffmpeg_kit_flutter_new_min/return_code.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:geolocator/geolocator.dart';
@@ -15,6 +15,7 @@ import 'workbench_page.dart';
 
 // 视频水印页：取景里底部就叠着同一条水印，录完后把水印条渲染成图片，
 // 用 ffmpeg 的 overlay 滤镜按视频宽度等比放大、贴在视频底部烧进去，再分享成片。
+// 编码用内置 mpeg4（min 版不带 libx264），这样包体不会因为全量 ffmpeg 库膨胀到无法直接下载。
 // 不用 drawtext（不需要字体文件），水印长什么样、烧进去就是什么样。
 class VideoWatermarkPage extends StatefulWidget {
   final String template;
@@ -158,7 +159,7 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
       final filter = videoWidth > 0
           ? '[1:v]scale=$videoWidth:-1[wm];[0:v][wm]overlay=0:H-h'
           : '[0:v][1:v]overlay=0:H-h';
-      final command = "-y -i ${video.path} -i ${barFile.path} -filter_complex $filter -c:v libx264 -preset veryfast -crf 23 -c:a copy $outPath";
+      final command = "-y -i ${video.path} -i ${barFile.path} -filter_complex $filter -c:v mpeg4 -q:v 3 -c:a copy $outPath";
       final session = await FFmpegKit.execute(command);
       final rc = await session.getReturnCode();
       final ok = ReturnCode.isSuccess(rc) && await File(outPath).exists();
