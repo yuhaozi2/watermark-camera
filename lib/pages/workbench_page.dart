@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:nfc_manager/nfc_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,6 +109,45 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
   Future<void> _saveInspection() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wm_inspection', jsonEncode(inspection));
+  }
+
+  bool _nfcScanning = false;
+
+  // NFC 打卡：把手机贴近标签，读到标签 ID 就记一条已打卡的巡检记录。
+  Future<void> _nfcCheckIn() async {
+    final available = await NfcManager.instance.isAvailable();
+    if (!available) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('此设备不支持 NFC 或未开启 NFC')));
+      return;
+    }
+    setState(() => _nfcScanning = true);
+    try {
+      await NfcManager.instance.startSession(onDiscovered: (tag) async {
+        final idData = tag.data['id'];
+        String tagId;
+        if (idData is List) {
+          tagId = idData.map((e) => (e as int).toRadixString(16).padLeft(2, '0')).join(':').toUpperCase();
+        } else {
+          tagId = tag.data.toString();
+        }
+        final now = DateTime.now();
+        String p(int n) => n.toString().padLeft(2, '0');
+        setState(() {
+          inspection.add({'name': 'NFC打卡', 'location': '标签 $tagId', 'checked': true, 'checkedTime': '${p(now.hour)}:${p(now.minute)}'});
+        });
+        await _saveInspection();
+        await NfcManager.instance.stopSession();
+        if (mounted) {
+          setState(() => _nfcScanning = false);
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('NFC 打卡成功：$tagId')));
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() => _nfcScanning = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('NFC 扫描失败：$e')));
+      }
+    }
   }
 
   String _csvCell(String v) => '"${v.replaceAll('"', '""')}"';
@@ -294,6 +334,11 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                     _saveInspection();
                   },
                   child: const Text('添加巡检点'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _nfcScanning ? null : _nfcCheckIn,
+                  child: Text(_nfcScanning ? '把手机贴近 NFC 标签…' : 'NFC 扫标签打卡'),
                 ),
                 const SizedBox(height: 12),
                 for (var i = 0; i < inspection.length; i++)
