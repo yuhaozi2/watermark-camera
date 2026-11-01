@@ -18,6 +18,7 @@ class LiveCameraPage extends StatefulWidget {
   final String weatherText;
   final String teamName;
   final String placeText;
+  final String brandLogoPath;
   const LiveCameraPage({
     super.key,
     required this.template,
@@ -29,6 +30,7 @@ class LiveCameraPage extends StatefulWidget {
     required this.weatherText,
     this.teamName = '',
     this.placeText = '',
+    this.brandLogoPath = '',
   });
   @override
   State<LiveCameraPage> createState() => _LiveCameraPageState();
@@ -158,6 +160,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
                     opacity: 0.92,
                     simple: widget.template == '简洁水印',
                     antiFraudCode: antiFraudCode('$_timeText|$_locationText'),
+                      brandImagePath: widget.brandLogoPath,
                   ),
                 ),
               ],
