@@ -8,6 +8,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:share_plus/share_plus.dart';
 import 'watermark_camera_page.dart';
+import '../docx_export.dart';
 
 // 多图拼图页：干净重写版
 // 结构按原包 preset_puzzle 的头 + 条目 + 照片区：头（品牌占位 + 标题 + 字段行）+ 每张照片 + 说明
@@ -120,6 +121,30 @@ class _PuzzlePageState extends State<PuzzlePage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('拼图已生成，可在分享面板里保存')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('生成失败：$e')));
+    }
+  }
+
+  // 导出 Word：标题 + 字段 + 照片按真实尺寸等比放进 docx（原版 puzzle_word 的同类做法），
+  // 生成器在 lib/docx_export.dart，本地已用 LibreOffice 转 PDF 验过能打开、中文正常。
+  Future<void> saveWord() async {
+    try {
+      final spec = puzzleSpecs[template];
+      final images = <DocxImage>[];
+      for (var i = 0; i < photos.length; i++) {
+        final bytes = await File(photos[i].path).readAsBytes();
+        final codec = await ui.instantiateImageCodec(bytes);
+        final frame = await codec.getNextFrame();
+        final ext = photos[i].path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+        images.add(DocxImage(filename: 'image${i + 1}.$ext', bytes: bytes, width: frame.image.width, height: frame.image.height));
+      }
+      final docx = buildDocx(title: spec?.defaultTitle ?? template, fields: fieldValues, images: images);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/puzzle_${DateTime.now().millisecondsSinceEpoch}.docx');
+      await file.writeAsBytes(docx);
+      await Share.shareXFiles([XFile(file.path)], text: '拼图Word');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('拼图 Word 已生成，可在分享面板里保存')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出 Word 失败：$e')));
     }
   }
 
@@ -472,7 +497,7 @@ class _PuzzlePageState extends State<PuzzlePage> {
           Row(children: [
             Expanded(child: OutlinedButton(onPressed: savePdf, child: const Text('导出拼图 PDF'))),
             const SizedBox(width: 8),
-            const Expanded(child: SizedBox()),
+            Expanded(child: OutlinedButton(onPressed: saveWord, child: const Text('导出拼图 Word'))),
           ]),
           const SizedBox(height: 16),
           RepaintBoundary(
