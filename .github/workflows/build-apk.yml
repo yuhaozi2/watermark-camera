@@ -17,6 +17,16 @@ jobs:
           flutter-version: '3.35.0'
           channel: stable
       - run: flutter create --platforms=android --project-name watermark_camera .
+      - run: |
+          python3 - << 'EOF'
+          import pathlib
+          p = pathlib.Path('android/app/src/main/AndroidManifest.xml')
+          t = p.read_text()
+          if 'android.permission.NFC' not in t:
+              t = t.replace('<application', '<uses-permission android:name="android.permission.NFC" />\n    <uses-feature android:name="android.hardware.nfc" android:required="false" />\n    <application', 1)
+              p.write_text(t)
+          print('NFC manifest patch done')
+          EOF
       - run: flutter pub get
       - run: flutter analyze lib/pages/watermark_camera_page.dart lib/pages/puzzle_page.dart || true
       - run: flutter build apk --release --split-per-abi
