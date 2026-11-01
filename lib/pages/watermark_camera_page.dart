@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'puzzle_page.dart';
 import 'live_camera_page.dart';
 import 'workbench_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const templates = [
   '时间地点', '打卡考勤', '工作记录', '会议', '监理巡检',
@@ -231,6 +232,32 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   double watermarkOpacity = 0.92;
   String ratio = '4:3';
   bool showGrid = false;
+  String photoFilter = '原图';
+
+  // 照片滤镜：在预览图上套 ColorFiltered，生成时 RepaintBoundary 一并烧入成图
+  ColorFilter? get photoColorFilter {
+    switch (photoFilter) {
+      case '黑白':
+        return const ColorFilter.matrix(<double>[0.299, 0.587, 0.114, 0, 0, 0.299, 0.587, 0.114, 0, 0, 0.299, 0.587, 0.114, 0, 0, 0, 0, 0, 1, 0]);
+      case '暖色':
+        return const ColorFilter.matrix(<double>[1.1, 0, 0, 0, 10, 0, 1.05, 0, 0, 5, 0, 0, 0.9, 0, 0, 0, 0, 0, 1, 0]);
+      case '冷色':
+        return const ColorFilter.matrix(<double>[0.9, 0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 0, 1.15, 0, 10, 0, 0, 0, 1, 0]);
+      default:
+        return null;
+    }
+  }
+
+  // 地点是经纬度时，在浏览器地图里打开该点（用公开地图链接，不用原厂地图 SDK）
+  Future<void> openMap() async {
+    final parts = locationText.split(',');
+    if (parts.length != 2) return;
+    final lat = double.tryParse(parts[0].trim());
+    final lng = double.tryParse(parts[1].trim());
+    if (lat == null || lng == null) return;
+    final uri = Uri.parse('https://www.openstreetmap.org/?mlat=$lat&mlon=$lng#map=16/$lat/$lng');
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   void initState() {
@@ -328,7 +355,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                 borderRadius: BorderRadius.circular(12),
                 child: Stack(children: [
                   if (image != null)
-                    Positioned.fill(child: Image.file(image!, fit: BoxFit.cover))
+                    Positioned.fill(child: photoColorFilter == null ? Image.file(image!, fit: BoxFit.cover) : ColorFiltered(colorFilter: photoColorFilter!, child: Image.file(image!, fit: BoxFit.cover)))
                   else
                     const Center(child: Text('还没有照片\n点下面实时拍照或导入', textAlign: TextAlign.center)),
                   if (showGrid) const Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _GridPainter()))),
@@ -414,6 +441,17 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
               ChoiceChip(label: Text(r), selected: ratio == r, onSelected: (_) => setState(() => ratio = r)),
           ]),
           Row(children: [const Text('网格线'), Switch(value: showGrid, onChanged: (v) => setState(() => showGrid = v)), const Text('（预览辅助，不影响原图）')]),
+          Row(children: [
+            const Text('滤镜'),
+            const SizedBox(width: 8),
+            for (final f in ['原图', '黑白', '暖色', '冷色'])
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: ChoiceChip(label: Text(f), selected: photoFilter == f, onSelected: (_) => setState(() => photoFilter = f)),
+              ),
+          ]),
+          if (locationText.contains(','))
+            TextButton(onPressed: openMap, child: const Text('在地图上查看定位点')),
           const SizedBox(height: 16),
           ElevatedButton(
             onPressed: () async {
