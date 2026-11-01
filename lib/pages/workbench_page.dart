@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import '../xlsx_export.dart';
 import 'package:nfc_manager/nfc_manager.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -24,6 +26,12 @@ String antiFraudCode(String seed) {
 Future<String> loadTeamName() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getString('wm_team_name') ?? '';
+}
+
+// 自定义品牌 Logo 路径：用户自己从相册上传的图，存在应用目录，不用原厂 logo。
+Future<String> loadBrandLogoPath() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('wm_brand_logo_path') ?? '';
 }
 
 // 每次生成水印照片时记一条考勤：日期、时间、模板、地点、防伪码。
@@ -60,6 +68,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
   final scheduleEndCtrl = TextEditingController(text: '18:00');
   String scheduleStart = '09:00';
   String scheduleEnd = '18:00';
+  String brandLogoPath = '';
   final memberCtrl = TextEditingController();
   final pointNameCtrl = TextEditingController();
   final pointLocCtrl = TextEditingController();
@@ -80,6 +89,7 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
       scheduleEnd = prefs.getString('wm_schedule_end') ?? '18:00';
       scheduleStartCtrl.text = scheduleStart;
       scheduleEndCtrl.text = scheduleEnd;
+      brandLogoPath = prefs.getString('wm_brand_logo_path') ?? '';
       members = (jsonDecode(prefs.getString('wm_team_members') ?? '[]') as List).cast<String>();
       attendance = (jsonDecode(prefs.getString('wm_attendance') ?? '[]') as List).cast<Map<String, dynamic>>();
       inspection = (jsonDecode(prefs.getString('wm_inspection') ?? '[]') as List).cast<Map<String, dynamic>>();
@@ -109,6 +119,27 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
   Future<void> _saveInspection() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('wm_inspection', jsonEncode(inspection));
+  }
+
+  Future<void> _pickBrandLogo() async {
+    final x = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (x == null) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final ext = x.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+    final dest = File('${dir.path}/wm_brand_logo.$ext');
+    await File(x.path).copy(dest.path);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wm_brand_logo_path', dest.path);
+    if (mounted) {
+      setState(() => brandLogoPath = dest.path);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('品牌 Logo 已设置，拍照水印右上角会显示它')));
+    }
+  }
+
+  Future<void> _clearBrandLogo() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('wm_brand_logo_path');
+    if (mounted) setState(() => brandLogoPath = '');
   }
 
   bool _nfcScanning = false;
@@ -172,6 +203,27 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
       buf.writeln([d, list.first['time'].toString(), list.last['time'].toString(), list.length.toString()].map((e) => _csvCell(e)).join(','));
     }
     _exportCsv('考勤统计.csv', buf.toString());
+  }
+
+  Future<void> _exportAttendanceExcel() async {
+    final grouped = _groupAttendance();
+    final dates = grouped.keys.toList()..sort();
+    final rows = <List<String>>[
+      ['日期', '上班时间', '下班时间', '照片数', '状态'],
+    ];
+    for (final d in dates) {
+      final list = grouped[d]!;
+      rows.add([d, list.first['time'].toString(), list.last['time'].toString(), list.length.toString(), _dayStatus(list)]);
+    }
+    try {
+      final bytes = buildXlsx(rows: rows);
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/考勤统计.xlsx');
+      await file.writeAsBytes(bytes);
+      await Share.shareXFiles([XFile(file.path)], text: '考勤统计.xlsx');
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败：$e')));
+    }
   }
 
   void _exportWatermarkData() {
@@ -268,6 +320,17 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                 const SizedBox(height: 8),
                 ElevatedButton(onPressed: _saveTeam, child: const Text('保存团队')),
                 const SizedBox(height: 12),
+                const Text('品牌 Logo：用你自己的图，拍照水印右上角会显示它（不是原厂 logo）', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (brandLogoPath.isNotEmpty) Image.file(File(brandLogoPath), width: 80, height: 80, fit: BoxFit.contain, errorBuilder: (c, e, s) => const Text('Logo 文件已删除，请重新上传')),
+                if (brandLogoPath.isEmpty) const Text('未设置，现在水印上是灰色 Logo 占位'),
+                const SizedBox(height: 8),
+                Row(children: [
+                  ElevatedButton(onPressed: _pickBrandLogo, child: const Text('上传品牌 Logo')),
+                  const SizedBox(width: 8),
+                  if (brandLogoPath.isNotEmpty) TextButton(onPressed: _clearBrandLogo, child: const Text('清除')),
+                ]),
+                const SizedBox(height: 12),
                 Text('成员（${members.length}人）', style: const TextStyle(fontWeight: FontWeight.bold)),
                 for (var i = 0; i < members.length; i++)
                   ListTile(
@@ -301,6 +364,12 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                   Expanded(child: ElevatedButton(onPressed: attendance.isEmpty ? null : _exportAttendanceSummary, child: const Text('导出考勤统计'))),
                   const SizedBox(width: 8),
                   Expanded(child: ElevatedButton(onPressed: attendance.isEmpty ? null : _exportWatermarkData, child: const Text('导出水印数据'))),
+                ]),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: OutlinedButton(onPressed: attendance.isEmpty ? null : _exportAttendanceExcel, child: const Text('导出考勤 Excel'))),
+                  const SizedBox(width: 8),
+                  const Expanded(child: SizedBox()),
                 ]),
                 const SizedBox(height: 12),
                 if (dates.isEmpty) const Text('还没有考勤记录，去拍一张带水印的照片就会记一条。'),
