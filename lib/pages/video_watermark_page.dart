@@ -27,6 +27,7 @@ class VideoWatermarkPage extends StatefulWidget {
   final String weatherText;
   final String teamName;
   final String placeText;
+  final String brandLogoPath;
   const VideoWatermarkPage({
     super.key,
     required this.template,
@@ -38,6 +39,7 @@ class VideoWatermarkPage extends StatefulWidget {
     required this.weatherText,
     this.teamName = '',
     this.placeText = '',
+    this.brandLogoPath = '',
   });
   @override
   State<VideoWatermarkPage> createState() => _VideoWatermarkPageState();
@@ -244,6 +246,7 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
                       opacity: 0.92,
                       simple: widget.template == '简洁水印',
                       antiFraudCode: antiFraudCode('$_timeText|$_locationText'),
+                      brandImagePath: widget.brandLogoPath,
                     ),
                   ),
                 ),
