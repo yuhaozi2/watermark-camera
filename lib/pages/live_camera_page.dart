@@ -4,6 +4,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'watermark_camera_page.dart';
+import 'workbench_page.dart';
 
 // 实时取景页：打开就是相机取景，水印条直接叠在取景画面底部，
 // 时间每秒刷新、定位可手动刷新，拍下的照片回到主页面后套用同一条水印生成。
@@ -15,6 +16,7 @@ class LiveCameraPage extends StatefulWidget {
   final String customText;
   final String remark;
   final String weatherText;
+  final String teamName;
   const LiveCameraPage({
     super.key,
     required this.template,
@@ -24,6 +26,7 @@ class LiveCameraPage extends StatefulWidget {
     required this.customText,
     required this.remark,
     required this.weatherText,
+    this.teamName = '',
   });
   @override
   State<LiveCameraPage> createState() => _LiveCameraPageState();
@@ -117,6 +120,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
       customText: widget.customText,
       remark: widget.remark,
       weatherText: widget.weatherText,
+      teamName: widget.teamName,
     );
     return Scaffold(
       backgroundColor: Colors.black,
@@ -146,6 +150,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
                     fontSize: 13,
                     opacity: 0.92,
                     simple: widget.template == '简洁水印',
+                    antiFraudCode: antiFraudCode('$_timeText|$_locationText'),
                   ),
                 ),
               ],
