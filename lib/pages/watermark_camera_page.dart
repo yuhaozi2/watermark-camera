@@ -7,10 +7,64 @@ import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'dart:convert';
 import 'puzzle_page.dart';
 import 'live_camera_page.dart';
 import 'workbench_page.dart';
+import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+
+// 定位后自动补全：地点名称用 Nominatim 逆地理编码（公开服务，免 key），
+// 天气用 Open-Meteo（公开服务，免 key）；原版天气来源是彩云天气，那个要 key，这里先用公开服务顶上。
+String weatherCodeChinese(int code) {
+  if (code == 0) return '晴';
+  if (code == 1 || code == 2) return '多云';
+  if (code == 3) return '阴';
+  if (code == 45 || code == 48) return '雾';
+  if (code >= 51 && code <= 55) return '毛毛雨';
+  if (code >= 61 && code <= 65) return '雨';
+  if (code >= 71 && code <= 75) return '雪';
+  if (code >= 80 && code <= 82) return '阵雨';
+  if (code == 95) return '雷阵雨';
+  return '多云';
+}
+
+Future<Map<String, String>> fetchPlaceAndWeather(double lat, double lng) async {
+  final result = <String, String>{};
+  try {
+    final geo = await http.get(
+      Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1'),
+      headers: {'User-Agent': 'watermark-camera/1.0'},
+    ).timeout(const Duration(seconds: 10));
+    if (geo.statusCode == 200) {
+      final data = jsonDecode(geo.body) as Map<String, dynamic>;
+      final addr = (data['address'] as Map<String, dynamic>?) ?? {};
+      final parts = <String>[];
+      for (final k in ['state', 'city', 'town', 'village', 'suburb', 'quarter', 'road']) {
+        final v = (addr[k] ?? '').toString();
+        if (v.isNotEmpty && !parts.contains(v)) parts.add(v);
+      }
+      final name = (data['name'] ?? '').toString();
+      if (name.isNotEmpty && !parts.contains(name)) parts.add(name);
+      if (parts.isNotEmpty) result['place'] = parts.join('');
+    }
+  } catch (_) {}
+  try {
+    final w = await http.get(
+      Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lng&current=temperature_2m,weather_code&timezone=auto'),
+    ).timeout(const Duration(seconds: 10));
+    if (w.statusCode == 200) {
+      final data = jsonDecode(w.body) as Map<String, dynamic>;
+      final cur = (data['current'] as Map<String, dynamic>?) ?? {};
+      final temp = cur['temperature_2m'];
+      final code = cur['weather_code'];
+      if (temp != null && code != null) {
+        result['weather'] = '${weatherCodeChinese((code as num).toInt())} ${(temp as num).toStringAsFixed(0)}°C';
+      }
+    }
+  } catch (_) {}
+  return result;
+}
 
 const templates = [
   '时间地点', '打卡考勤', '工作记录', '会议', '监理巡检',
@@ -63,10 +117,12 @@ const singleSpecs = {
 
 TemplateSpec? specFor(String t) => puzzleSpecs[t] ?? singleSpecs[t];
 
-// 取一个标签的值：优先用户在表单里填的，其次是定位得到的坐标（地点 / 经纬度共用定位结果）
-String? tagValue(Map<String, String> fieldValues, String field, String locationText) {
+// 取一个标签的值：优先用户在表单里填的，其次是定位结果
+// 地点优先显示解析出的地点名称，经纬度显示坐标
+String? tagValue(Map<String, String> fieldValues, String field, String locationText, {String placeText = ''}) {
   final v = fieldValues[field];
   if (v != null && v.isNotEmpty) return v;
+  if (field == '地点' && placeText.isNotEmpty) return placeText;
   if ((field == '地点' || field == '经纬度') && locationText.isNotEmpty) return locationText;
   return null;
 }
@@ -83,6 +139,7 @@ List<String> buildWatermarkLines({
   required String remark,
   required String weatherText,
   String teamName = '',
+  String placeText = '',
 }) {
   if (template == '简洁水印') {
     return [timeText, if (locationText.isNotEmpty) '📍 $locationText'];
@@ -93,7 +150,7 @@ List<String> buildWatermarkLines({
   lines.add(timeText);
   if (spec != null) {
     for (final f in spec.fields) {
-      final v = tagValue(fieldValues, f, locationText);
+      final v = tagValue(fieldValues, f, locationText, placeText: placeText);
       if (v == null || v.isEmpty) continue;
       if (f == '地点') {
         lines.add('📍 $v');
@@ -107,7 +164,8 @@ List<String> buildWatermarkLines({
   final hasProjectTag = spec?.fields.any((f) => f == '项目' || f == '项目名称') ?? false;
   if (projectText.isNotEmpty && !hasProjectTag) lines.add('项目：$projectText');
   final hasLocationTag = spec?.fields.any((f) => f == '地点' || f == '经纬度') ?? false;
-  if (locationText.isNotEmpty && !hasLocationTag) lines.add('📍 $locationText');
+  if (!hasLocationTag && placeText.isNotEmpty) lines.add('📍 $placeText');
+  if (!hasLocationTag && placeText.isEmpty && locationText.isNotEmpty) lines.add('📍 $locationText');
   if (customText.isNotEmpty) lines.add(customText);
   if (remark.isNotEmpty) lines.add(remark);
   return lines;
@@ -219,6 +277,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String template = '时间地点';
   String customText = '';
   String locationText = '';
+  String placeText = '';
   String remark = '';
   String weatherText = '';
   String projectText = '';
@@ -289,7 +348,19 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
-    setState(() => locationText = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');
+    final coord = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
+    setState(() => locationText = coord);
+    // 定位成功后顺手补地点名称和天气（公开服务，失败就只留经纬度，不报错打断拍照）
+    final extra = await fetchPlaceAndWeather(pos.latitude, pos.longitude);
+    if (mounted) {
+      setState(() {
+        if ((extra['place'] ?? '').isNotEmpty) placeText = extra['place']!;
+        if ((extra['weather'] ?? '').isNotEmpty) weatherText = extra['weather']!;
+      });
+      if ((extra['place'] ?? '').isNotEmpty || (extra['weather'] ?? '').isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已补全：${extra['place'] ?? ''} ${extra['weather'] ?? ''}'.trim())));
+      }
+    }
   }
 
   List<String> lines() => buildWatermarkLines(
@@ -302,6 +373,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
         remark: remark,
         weatherText: weatherText,
         teamName: teamName,
+        placeText: placeText,
       );
 
   Future<void> save() async {
@@ -416,10 +488,11 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
           TextField(decoration: const InputDecoration(labelText: '项目 / 工单'), onChanged: (v) => setState(() => projectText = v)),
           TextField(decoration: const InputDecoration(labelText: '水印文字'), onChanged: (v) => setState(() => customText = v)),
           Row(children: [
-            Expanded(child: TextField(decoration: const InputDecoration(labelText: '地点（定位后自动填经纬度）'), controller: TextEditingController(text: locationText), onChanged: (v) => setState(() => locationText = v))),
+            Expanded(child: TextField(decoration: const InputDecoration(labelText: '经纬度（定位后自动填）'), controller: TextEditingController(text: locationText), onChanged: (v) => setState(() => locationText = v))),
             TextButton(onPressed: locate, child: const Text('定位')),
           ]),
-          TextField(decoration: const InputDecoration(labelText: '天气'), onChanged: (v) => setState(() => weatherText = v)),
+          TextField(decoration: const InputDecoration(labelText: '地点名称（定位后自动解析，可手改）'), controller: TextEditingController(text: placeText), onChanged: (v) => setState(() => placeText = v)),
+          TextField(decoration: const InputDecoration(labelText: '天气（定位后自动填，可手改）'), controller: TextEditingController(text: weatherText), onChanged: (v) => setState(() => weatherText = v)),
           TextField(decoration: const InputDecoration(labelText: '备注（人员等）'), onChanged: (v) => setState(() => remark = v)),
           const SizedBox(height: 8),
           const Text('水印位置'),
@@ -466,6 +539,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   remark: remark,
                   weatherText: weatherText,
                   teamName: teamName,
+                  placeText: placeText,
                 )),
               );
               if (file != null && mounted) setState(() { image = file; timeText = formatNow(); });
