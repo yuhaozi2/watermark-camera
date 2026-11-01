@@ -16,6 +16,8 @@ dependencies:
   shared_preferences: ^2.3.0
   pdf: 3.11.3
   url_launcher: ^6.3.0
+  http: ^1.2.0
+  nfc_manager: ^3.4.0
 
 # CI 上 image 最新版 4.11 与 Flutter 3.35 的 Dart 不兼容（decodeLazy 报错），
 # 锁定到本地验证过的 4.5.4，pdf 3.11.3 与它配套。
