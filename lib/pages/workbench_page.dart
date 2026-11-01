@@ -55,6 +55,10 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
   List<Map<String, dynamic>> attendance = [];
   List<Map<String, dynamic>> inspection = [];
   final teamNameCtrl = TextEditingController();
+  final scheduleStartCtrl = TextEditingController(text: '09:00');
+  final scheduleEndCtrl = TextEditingController(text: '18:00');
+  String scheduleStart = '09:00';
+  String scheduleEnd = '18:00';
   final memberCtrl = TextEditingController();
   final pointNameCtrl = TextEditingController();
   final pointLocCtrl = TextEditingController();
@@ -71,6 +75,10 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
       teamName = prefs.getString('wm_team_name') ?? '';
       teamNo = prefs.getString('wm_team_no') ?? '';
       teamNameCtrl.text = teamName;
+      scheduleStart = prefs.getString('wm_schedule_start') ?? '09:00';
+      scheduleEnd = prefs.getString('wm_schedule_end') ?? '18:00';
+      scheduleStartCtrl.text = scheduleStart;
+      scheduleEndCtrl.text = scheduleEnd;
       members = (jsonDecode(prefs.getString('wm_team_members') ?? '[]') as List).cast<String>();
       attendance = (jsonDecode(prefs.getString('wm_attendance') ?? '[]') as List).cast<Map<String, dynamic>>();
       inspection = (jsonDecode(prefs.getString('wm_inspection') ?? '[]') as List).cast<Map<String, dynamic>>();
@@ -139,6 +147,31 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
       ].map((e) => _csvCell(e)).join(','));
     }
     _exportCsv('水印数据.csv', buf.toString());
+  }
+
+  Future<void> _saveSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('wm_schedule_start', scheduleStartCtrl.text.trim());
+    await prefs.setString('wm_schedule_end', scheduleEndCtrl.text.trim());
+    setState(() {
+      scheduleStart = scheduleStartCtrl.text.trim();
+      scheduleEnd = scheduleEndCtrl.text.trim();
+    });
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('排班已保存')));
+  }
+
+  // 当天考勤状态：只按本机照片时间与排班比对
+  String _dayStatus(List<Map<String, dynamic>> list) {
+    if (list.isEmpty) return '';
+    final first = (list.first['time'] ?? '') as String;
+    final last = (list.last['time'] ?? '') as String;
+    final late = first.compareTo('$scheduleStart:00') > 0;
+    final early = last.compareTo('$scheduleEnd:00') < 0;
+    if (list.length == 1) return '仅一次打卡';
+    if (late && early) return '迟到·早退';
+    if (late) return '迟到';
+    if (early) return '早退';
+    return '正常';
   }
 
   // 考勤按日期分组：上班=当天最早拍照，下班=当天最晚拍照（原版规则）
@@ -214,6 +247,14 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
               children: [
                 const Text('考勤规则：上班=当天最早拍照时间，下班=当天最晚拍照时间', style: TextStyle(fontWeight: FontWeight.bold)),
                 const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(child: TextField(controller: scheduleStartCtrl, decoration: const InputDecoration(labelText: '排班上班（HH:mm）'))),
+                  const SizedBox(width: 8),
+                  Expanded(child: TextField(controller: scheduleEndCtrl, decoration: const InputDecoration(labelText: '排班下班（HH:mm）'))),
+                  const SizedBox(width: 8),
+                  ElevatedButton(onPressed: _saveSchedule, child: const Text('保存排班')),
+                ]),
+                const SizedBox(height: 8),
                 Card(child: ListTile(title: Text('共 ${dates.length} 天 · ${attendance.length} 张照片'), subtitle: const Text('统计口径与原版一致：只按本机生成的水印照片统计'))),
                 const SizedBox(height: 8),
                 Row(children: [
@@ -226,8 +267,8 @@ class _WorkbenchPageState extends State<WorkbenchPage> {
                 for (final d in dates)
                   Card(
                     child: ListTile(
-                      title: Text(d),
-                      subtitle: Text('上班 ${grouped[d]!.first['time']}  ·  下班 ${grouped[d]!.last['time']}  ·  照片 ${grouped[d]!.length} 张'),
+                      title: Text('$d  ${_dayStatus(grouped[d]!)}'),
+                      subtitle: Text('上班 ${grouped[d]!.first['time']}  ·  下班 ${grouped[d]!.last['time']}  ·  照片 ${grouped[d]!.length} 张  ·  排班 $scheduleStart-$scheduleEnd'),
                     ),
                   ),
               ],
