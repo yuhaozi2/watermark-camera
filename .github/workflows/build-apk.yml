@@ -24,8 +24,10 @@ jobs:
           t = p.read_text()
           if 'android.permission.NFC' not in t:
               t = t.replace('<application', '<uses-permission android:name="android.permission.NFC" />\n    <uses-feature android:name="android.hardware.nfc" android:required="false" />\n    <application', 1)
-              p.write_text(t)
-          print('NFC manifest patch done')
+          if 'android.permission.RECORD_AUDIO' not in t:
+              t = t.replace('<application', '<uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <application', 1)
+          p.write_text(t)
+          print('manifest patch done')
           EOF
       - run: flutter pub get
       - run: flutter analyze lib/pages/watermark_camera_page.dart lib/pages/puzzle_page.dart || true
