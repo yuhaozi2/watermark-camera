@@ -17,6 +17,7 @@ class LiveCameraPage extends StatefulWidget {
   final String remark;
   final String weatherText;
   final String teamName;
+  final String placeText;
   const LiveCameraPage({
     super.key,
     required this.template,
@@ -27,6 +28,7 @@ class LiveCameraPage extends StatefulWidget {
     required this.remark,
     required this.weatherText,
     this.teamName = '',
+    this.placeText = '',
   });
   @override
   State<LiveCameraPage> createState() => _LiveCameraPageState();
@@ -39,6 +41,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
   String _error = '';
   String _timeText = '';
   String _locationText = '';
+  String _placeText = '';
   Timer? _clock;
 
   @override
@@ -46,6 +49,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
     super.initState();
     _timeText = formatNow();
     _locationText = widget.locationText;
+    _placeText = widget.placeText;
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _timeText = formatNow());
     });
@@ -87,6 +91,8 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
     }
     final pos = await Geolocator.getCurrentPosition();
     if (mounted) setState(() => _locationText = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');
+    final extra = await fetchPlaceAndWeather(pos.latitude, pos.longitude);
+    if (mounted && (extra['place'] ?? '').isNotEmpty) setState(() => _placeText = extra['place']!);
   }
 
   Future<void> _capture() async {
@@ -121,6 +127,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
       remark: widget.remark,
       weatherText: widget.weatherText,
       teamName: widget.teamName,
+      placeText: _placeText,
     );
     return Scaffold(
       backgroundColor: Colors.black,
