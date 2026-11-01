@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'puzzle_page.dart';
 import 'live_camera_page.dart';
+import 'workbench_page.dart';
 
 const templates = [
   '时间地点', '打卡考勤', '工作记录', '会议', '监理巡检',
@@ -80,12 +81,15 @@ List<String> buildWatermarkLines({
   required String customText,
   required String remark,
   required String weatherText,
+  String teamName = '',
 }) {
   if (template == '简洁水印') {
     return [timeText, if (locationText.isNotEmpty) '📍 $locationText'];
   }
   final spec = specFor(template);
-  final lines = <String>[spec?.defaultTitle ?? template, timeText];
+  final lines = <String>[spec?.defaultTitle ?? template];
+  if (teamName.isNotEmpty) lines.add('团队：$teamName');
+  lines.add(timeText);
   if (spec != null) {
     for (final f in spec.fields) {
       final v = tagValue(fieldValues, f, locationText);
@@ -116,6 +120,7 @@ Widget buildWatermarkBar({
   required double fontSize,
   required double opacity,
   required bool simple,
+  String antiFraudCode = '',
 }) {
   if (lines.isEmpty) return const SizedBox.shrink();
   if (simple) {
@@ -126,13 +131,22 @@ Widget buildWatermarkBar({
         children: [
           for (final line in lines)
             Text(line, style: TextStyle(color: Colors.white, fontSize: fontSize + 2, height: 1.5, shadows: const [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1))])),
+          if (antiFraudCode.isNotEmpty) Text('防伪码 $antiFraudCode', style: TextStyle(color: Colors.white70, fontSize: fontSize - 1, height: 1.5, shadows: const [Shadow(color: Colors.black87, blurRadius: 4, offset: Offset(0, 1))])),
         ],
       ),
     );
   }
   final title = lines.first;
-  final time = lines.length > 1 ? lines[1] : '';
-  final rest = lines.length > 2 ? lines.sublist(2) : <String>[];
+  // 团队行（如果有）在标题之后、时间之前；时间是除标题、团队行外的第一行
+  var timeIndex = 1;
+  var restStart = 2;
+  if (lines.length > 2 && lines[1].startsWith('团队：')) {
+    timeIndex = 2;
+    restStart = 3;
+  }
+  final time = lines.length > timeIndex ? lines[timeIndex] : '';
+  final rest = lines.length > restStart ? lines.sublist(restStart) : <String>[];
+  final teamLine = timeIndex == 2 ? lines[1] : '';
   return Container(
     width: double.infinity,
     color: Colors.white.withOpacity(opacity.clamp(0.3, 1.0)),
@@ -148,8 +162,10 @@ Widget buildWatermarkBar({
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(title, style: TextStyle(color: themeColor, fontSize: fontSize, fontWeight: FontWeight.bold, height: 1.4)),
+                if (teamLine.isNotEmpty) Text(teamLine, style: TextStyle(color: const Color(0xFF50607A), fontSize: fontSize, height: 1.4)),
                 if (time.isNotEmpty) Text(time, style: TextStyle(color: const Color(0xFF232325), fontSize: fontSize + 8, fontWeight: FontWeight.bold, height: 1.4)),
                 for (final line in rest) Text(line, style: TextStyle(color: const Color(0xFF50607A), fontSize: fontSize, height: 1.5)),
+                if (antiFraudCode.isNotEmpty) Text('防伪码 $antiFraudCode · 已验证真实性', style: TextStyle(color: Colors.grey, fontSize: fontSize - 2, height: 1.5)),
               ],
             ),
           ),
@@ -207,6 +223,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String projectText = '';
   String position = '左下';
   String timeText = '';
+  String teamName = '';
   Timer? _clock;
   final Map<String, String> fieldValues = {};
   Color watermarkColor = Colors.white;
@@ -219,6 +236,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   void initState() {
     super.initState();
     timeText = formatNow();
+    loadTeamName().then((v) { if (mounted) setState(() => teamName = v); });
     // 取景和预览里的时间每秒刷新，拍到的就是当前时间，不是打开页面的时间
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => timeText = formatNow());
@@ -256,6 +274,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
         customText: customText,
         remark: remark,
         weatherText: weatherText,
+        teamName: teamName,
       );
 
   Future<void> save() async {
@@ -267,6 +286,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/watermark_${DateTime.now().millisecondsSinceEpoch}.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
+      await recordAttendance(template: template, location: locationText);
       await Share.shareXFiles([XFile(file.path)], text: '水印照片');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已生成，可在分享面板里保存到相册')));
     } catch (e) {
@@ -287,6 +307,14 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       appBar: AppBar(title: Text('水印相机 · ${spec?.defaultTitle ?? template}'), backgroundColor: themeColor, foregroundColor: Colors.white,
         actions: [
           TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PuzzlePage())), child: const Text('拼图模式', style: TextStyle(color: Colors.white))),
+          TextButton(
+            onPressed: () async {
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkbenchPage()));
+              final v = await loadTeamName();
+              if (mounted) setState(() => teamName = v);
+            },
+            child: const Text('工作台', style: TextStyle(color: Colors.white)),
+          ),
         ]),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -314,6 +342,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                         fontSize: watermarkSize,
                         opacity: watermarkOpacity,
                         simple: template == '简洁水印',
+                        antiFraudCode: antiFraudCode('$timeText|$locationText'),
                       ),
                     ),
                 ]),
@@ -398,6 +427,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   customText: customText,
                   remark: remark,
                   weatherText: weatherText,
+                  teamName: teamName,
                 )),
               );
               if (file != null && mounted) setState(() { image = file; timeText = formatNow(); });
