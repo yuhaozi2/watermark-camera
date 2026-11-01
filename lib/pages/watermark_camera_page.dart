@@ -181,6 +181,7 @@ Widget buildWatermarkBar({
   required double opacity,
   required bool simple,
   String antiFraudCode = '',
+  String brandImagePath = '',
 }) {
   if (lines.isEmpty) return const SizedBox.shrink();
   if (simple) {
@@ -230,12 +231,22 @@ Widget buildWatermarkBar({
             ),
           ),
         ),
-        Container(
-          width: 40, height: 40, margin: const EdgeInsets.only(right: 10, top: 10),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
-          child: const Text('Logo', style: TextStyle(fontSize: 10, color: Colors.grey)),
-        ),
+        if (brandImagePath.isNotEmpty)
+          Container(
+            width: 40, height: 40, margin: const EdgeInsets.only(right: 10, top: 10),
+            child: Image.file(
+              File(brandImagePath),
+              width: 40, height: 40, fit: BoxFit.cover,
+              errorBuilder: (c, e, s) => Container(alignment: Alignment.center, decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)), child: const Text('Logo', style: TextStyle(fontSize: 10, color: Colors.grey))),
+            ),
+          )
+        else
+          Container(
+            width: 40, height: 40, margin: const EdgeInsets.only(right: 10, top: 10),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(border: Border.all(color: Colors.grey.shade300)),
+            child: const Text('Logo', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          ),
       ],
     ),
   );
@@ -285,6 +296,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String position = '左下';
   String timeText = '';
   String teamName = '';
+  String brandLogoPath = '';
   Timer? _clock;
   final Map<String, String> fieldValues = {};
   Color watermarkColor = Colors.white;
@@ -324,6 +336,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
     super.initState();
     timeText = formatNow();
     loadTeamName().then((v) { if (mounted) setState(() => teamName = v); });
+    loadBrandLogoPath().then((v) { if (mounted) setState(() => brandLogoPath = v); });
     // 取景和预览里的时间每秒刷新，拍到的就是当前时间，不是打开页面的时间
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => timeText = formatNow());
@@ -411,7 +424,8 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkbenchPage()));
               final v = await loadTeamName();
-              if (mounted) setState(() => teamName = v);
+              final logo = await loadBrandLogoPath();
+              if (mounted) setState(() { teamName = v; brandLogoPath = logo; });
             },
             child: const Text('工作台', style: TextStyle(color: Colors.white)),
           ),
@@ -443,6 +457,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                         opacity: watermarkOpacity,
                         simple: template == '简洁水印',
                         antiFraudCode: antiFraudCode('$timeText|$locationText'),
+                        brandImagePath: brandLogoPath,
                       ),
                     ),
                 ]),
@@ -541,6 +556,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   weatherText: weatherText,
                   teamName: teamName,
                   placeText: placeText,
+                  brandLogoPath: brandLogoPath,
                 )),
               );
               if (file != null && mounted) setState(() { image = file; timeText = formatNow(); });
@@ -562,6 +578,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   weatherText: weatherText,
                   teamName: teamName,
                   placeText: placeText,
+                  brandLogoPath: brandLogoPath,
                 )),
               );
             },
