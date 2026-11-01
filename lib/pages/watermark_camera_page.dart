@@ -286,7 +286,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/watermark_${DateTime.now().millisecondsSinceEpoch}.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
-      await recordAttendance(template: template, location: locationText);
+      await recordAttendance(template: template, location: locationText, antiFraud: antiFraudCode('$timeText|$locationText'));
       await Share.shareXFiles([XFile(file.path)], text: '水印照片');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已生成，可在分享面板里保存到相册')));
     } catch (e) {
