@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 import 'puzzle_page.dart';
 import 'live_camera_page.dart';
+import 'video_watermark_page.dart';
 import 'workbench_page.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
@@ -545,6 +546,26 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
               if (file != null && mounted) setState(() { image = file; timeText = formatNow(); });
             },
             child: const Text('实时拍照（取景里就带水印）'),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => VideoWatermarkPage(
+                  template: template,
+                  fieldValues: Map.of(fieldValues),
+                  projectText: projectText,
+                  locationText: locationText,
+                  customText: customText,
+                  remark: remark,
+                  weatherText: weatherText,
+                  teamName: teamName,
+                  placeText: placeText,
+                )),
+              );
+            },
+            child: const Text('视频水印（录像+烧入）'),
           ),
           const SizedBox(height: 8),
           Row(children: [
