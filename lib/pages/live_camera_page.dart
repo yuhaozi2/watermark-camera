@@ -22,6 +22,7 @@ class LiveCameraPage extends StatefulWidget {
   final String photographerName;
   final String altitudeText;
   final String placeNameText;
+  final String placeTitleOverride;
   final bool originalStyle;
   const LiveCameraPage({
     super.key,
@@ -38,6 +39,7 @@ class LiveCameraPage extends StatefulWidget {
     this.photographerName = '',
     this.altitudeText = '',
     this.placeNameText = '',
+    this.placeTitleOverride = '',
     this.originalStyle = true,
   });
   @override
@@ -145,7 +147,7 @@ class _LiveCameraPageState extends State<LiveCameraPage> {
             teamName: widget.teamName,
             placeText: _placeText,
           );
-    final originalTitle = _placeNameText.isNotEmpty ? _placeNameText : (spec?.defaultTitle ?? widget.template);
+    final originalTitle = widget.placeTitleOverride.isNotEmpty ? widget.placeTitleOverride : (_placeNameText.isNotEmpty ? _placeNameText : (spec?.defaultTitle ?? widget.template));
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
