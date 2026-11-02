@@ -28,6 +28,10 @@ class VideoWatermarkPage extends StatefulWidget {
   final String teamName;
   final String placeText;
   final String brandLogoPath;
+  final String photographerName;
+  final String altitudeText;
+  final String placeNameText;
+  final bool originalStyle;
   const VideoWatermarkPage({
     super.key,
     required this.template,
@@ -40,6 +44,10 @@ class VideoWatermarkPage extends StatefulWidget {
     this.teamName = '',
     this.placeText = '',
     this.brandLogoPath = '',
+    this.photographerName = '',
+    this.altitudeText = '',
+    this.placeNameText = '',
+    this.originalStyle = true,
   });
   @override
   State<VideoWatermarkPage> createState() => _VideoWatermarkPageState();
@@ -53,6 +61,8 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
   String _timeText = '';
   String _locationText = '';
   String _placeText = '';
+  String _altitudeText = '';
+  String _placeNameText = '';
   Timer? _clock;
   Timer? _recordTimer;
   bool _recording = false;
@@ -66,6 +76,8 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
     _timeText = formatNow();
     _locationText = widget.locationText;
     _placeText = widget.placeText;
+    _altitudeText = widget.altitudeText;
+    _placeNameText = widget.placeNameText;
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _timeText = formatNow());
     });
@@ -106,9 +118,9 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
       return;
     }
     final pos = await Geolocator.getCurrentPosition();
-    if (mounted) setState(() => _locationText = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}');
+    if (mounted) setState(() { _locationText = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}'; _altitudeText = '${pos.altitude.toStringAsFixed(1)}米'; });
     final extra = await fetchPlaceAndWeather(pos.latitude, pos.longitude);
-    if (mounted && (extra['place'] ?? '').isNotEmpty) setState(() => _placeText = extra['place']!);
+    if (mounted) setState(() { if ((extra['place'] ?? '').isNotEmpty) _placeText = extra['place']!; if ((extra['placeName'] ?? '').isNotEmpty) _placeNameText = extra['placeName']!; });
   }
 
   Future<void> _startRecording() async {
@@ -202,18 +214,21 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
   Widget build(BuildContext context) {
     final spec = specFor(widget.template);
     final themeColor = spec != null ? Color(spec.themeColor) : Colors.blue;
-    final lines = buildWatermarkLines(
-      template: widget.template,
-      timeText: _timeText,
-      fieldValues: widget.fieldValues,
-      projectText: widget.projectText,
-      locationText: _locationText,
-      customText: widget.customText,
-      remark: widget.remark,
-      weatherText: widget.weatherText,
-      teamName: widget.teamName,
-      placeText: _placeText,
-    );
+    final lines = widget.originalStyle && widget.template != '简洁水印'
+        ? buildOriginalStyleLines(timeText: _timeText, photographer: widget.photographerName, address: _placeText, altitudeText: _altitudeText, locationText: _locationText, remark: widget.remark)
+        : buildWatermarkLines(
+            template: widget.template,
+            timeText: _timeText,
+            fieldValues: widget.fieldValues,
+            projectText: widget.projectText,
+            locationText: _locationText,
+            customText: widget.customText,
+            remark: widget.remark,
+            weatherText: widget.weatherText,
+            teamName: widget.teamName,
+            placeText: _placeText,
+          );
+    final originalTitle = _placeNameText.isNotEmpty ? _placeNameText : (spec?.defaultTitle ?? widget.template);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -247,6 +262,8 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
                       simple: widget.template == '简洁水印',
                       antiFraudCode: antiFraudCode('$_timeText|$_locationText'),
                       brandImagePath: widget.brandLogoPath,
+                      originalStyle: widget.originalStyle,
+                      originalTitle: originalTitle,
                     ),
                   ),
                 ),
