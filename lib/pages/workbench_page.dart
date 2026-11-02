@@ -34,6 +34,27 @@ Future<String> loadBrandLogoPath() async {
   return prefs.getString('wm_brand_logo_path') ?? '';
 }
 
+// 拍照人（截图样式里的“拍照人：”）和原版深色水印开关，存在偏好里，重启后还在。
+Future<String> loadPhotographerName() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('wm_photographer') ?? '';
+}
+
+Future<void> savePhotographerName(String v) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('wm_photographer', v);
+}
+
+Future<bool> loadOriginalStyle() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getBool('wm_original_style') ?? true;
+}
+
+Future<void> saveOriginalStyle(bool v) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setBool('wm_original_style', v);
+}
+
 // 每次生成水印照片时记一条考勤：日期、时间、模板、地点、防伪码。
 Future<void> recordAttendance({required String template, required String location, String antiFraud = ''}) async {
   final prefs = await SharedPreferences.getInstance();
