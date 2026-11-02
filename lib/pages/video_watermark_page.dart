@@ -31,6 +31,7 @@ class VideoWatermarkPage extends StatefulWidget {
   final String photographerName;
   final String altitudeText;
   final String placeNameText;
+  final String placeTitleOverride;
   final bool originalStyle;
   const VideoWatermarkPage({
     super.key,
@@ -47,6 +48,7 @@ class VideoWatermarkPage extends StatefulWidget {
     this.photographerName = '',
     this.altitudeText = '',
     this.placeNameText = '',
+    this.placeTitleOverride = '',
     this.originalStyle = true,
   });
   @override
@@ -228,7 +230,7 @@ class _VideoWatermarkPageState extends State<VideoWatermarkPage> {
             teamName: widget.teamName,
             placeText: _placeText,
           );
-    final originalTitle = _placeNameText.isNotEmpty ? _placeNameText : (spec?.defaultTitle ?? widget.template);
+    final originalTitle = widget.placeTitleOverride.isNotEmpty ? widget.placeTitleOverride : (_placeNameText.isNotEmpty ? _placeNameText : (spec?.defaultTitle ?? widget.template));
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
