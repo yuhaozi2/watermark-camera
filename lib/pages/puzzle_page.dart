@@ -117,6 +117,12 @@ class _PuzzlePageState extends State<PuzzlePage> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/puzzle_${DateTime.now().millisecondsSinceEpoch}.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
+      try {
+        final docs = await getApplicationDocumentsDirectory();
+        final galleryDir = Directory('${docs.path}/wm_photos');
+        if (!await galleryDir.exists()) await galleryDir.create(recursive: true);
+        await file.copy('${galleryDir.path}/puzzle_${DateTime.now().millisecondsSinceEpoch}.png');
+      } catch (_) {}
       await Share.shareXFiles([XFile(file.path)], text: '拼图照片');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('拼图已生成，可在分享面板里保存')));
     } catch (e) {
