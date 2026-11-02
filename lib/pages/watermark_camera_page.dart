@@ -190,7 +190,7 @@ Widget buildWatermarkBar({
   String originalTitle = '',
 }) {
   if (lines.isEmpty) return const SizedBox.shrink();
-  // 截图样式：左下角窄框，蓝色地点标题条 + 深色半透明主体（不画白条、不放 Logo 占位）
+  // 截图样式：左下角窄框，蓝色地点标题条 + 深色半透明主体（不画白条、不放 Logo 占位、不放防伪码，严格按图来）
   if (originalStyle && !simple) {
     return FractionallySizedBox(
       widthFactor: 0.46,
@@ -201,7 +201,7 @@ Widget buildWatermarkBar({
         children: [
           Container(
             width: double.infinity,
-            color: themeColor,
+            color: const Color(0xFF2E7DFF),
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
             child: Text(originalTitle.isNotEmpty ? originalTitle : '水印', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
           ),
@@ -214,7 +214,6 @@ Widget buildWatermarkBar({
               children: [
                 for (var i = 0; i < lines.length; i++)
                   Text(lines[i], style: TextStyle(color: Colors.white, fontSize: fontSize - 2, fontWeight: i == 0 ? FontWeight.bold : FontWeight.normal, height: 1.5)),
-                if (antiFraudCode.isNotEmpty) Text('防伪码 $antiFraudCode', style: TextStyle(color: Colors.white70, fontSize: fontSize - 3, height: 1.5)),
               ],
             ),
           ),
@@ -376,8 +375,10 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String photographerName = '';
   String altitudeText = '';
   String placeNameText = '';
+  String placeTitleOverride = '';
   bool originalStyle = true;
   final photographerController = TextEditingController();
+  final placeTitleController = TextEditingController();
   Timer? _clock;
   final Map<String, String> fieldValues = {};
   Color watermarkColor = Colors.white;
@@ -486,6 +487,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
     loadTeamName().then((v) { if (mounted) setState(() => teamName = v); });
     loadBrandLogoPath().then((v) { if (mounted) setState(() => brandLogoPath = v); });
     loadPhotographerName().then((v) { if (mounted) setState(() { photographerName = v; photographerController.text = v; }); });
+    loadPlaceTitleOverride().then((v) { if (mounted) setState(() { placeTitleOverride = v; placeTitleController.text = v; }); });
     loadOriginalStyle().then((v) { if (mounted) setState(() => originalStyle = v); });
     // 取景和预览里的时间每秒刷新，拍到的就是当前时间，不是打开页面的时间
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -497,6 +499,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   void dispose() {
     _clock?.cancel();
     photographerController.dispose();
+    placeTitleController.dispose();
     super.dispose();
   }
 
@@ -622,7 +625,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                         antiFraudCode: antiFraudCode('$timeText|$locationText'),
                         brandImagePath: brandLogoPath,
                         originalStyle: originalStyle,
-                        originalTitle: placeNameText.isNotEmpty ? placeNameText : (spec?.defaultTitle ?? template),
+                        originalTitle: placeTitleOverride.isNotEmpty ? placeTitleOverride : (placeNameText.isNotEmpty ? placeNameText : (spec?.defaultTitle ?? template)),
                       ),
                     ),
                 ]),
@@ -676,6 +679,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
           TextField(decoration: const InputDecoration(labelText: '天气（定位后自动填，可手改）'), controller: TextEditingController(text: weatherText), onChanged: (v) => setState(() => weatherText = v)),
           TextField(decoration: const InputDecoration(labelText: '备注（人员等）'), onChanged: (v) => setState(() => remark = v)),
           TextField(controller: photographerController, decoration: const InputDecoration(labelText: '拍照人（截图样式里显示，如于志浩）'), onChanged: (v) { setState(() => photographerName = v); savePhotographerName(v); }),
+          TextField(controller: placeTitleController, decoration: const InputDecoration(labelText: '水印标题（地点名，空着就用定位到的地名，如金威怡园）'), onChanged: (v) { setState(() => placeTitleOverride = v); savePlaceTitleOverride(v); }),
           Row(children: [const Text('原版深色水印'), Switch(value: originalStyle, onChanged: (v) { setState(() => originalStyle = v); saveOriginalStyle(v); }), const Text('（截图样式：左下角深色框+蓝色地点条）')]),
           const SizedBox(height: 8),
           const Text('水印位置'),
@@ -738,6 +742,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   photographerName: photographerName,
                   altitudeText: altitudeText,
                   placeNameText: placeNameText,
+                  placeTitleOverride: placeTitleOverride,
                   originalStyle: originalStyle,
                 )),
               );
@@ -764,6 +769,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   photographerName: photographerName,
                   altitudeText: altitudeText,
                   placeNameText: placeNameText,
+                  placeTitleOverride: placeTitleOverride,
                   originalStyle: originalStyle,
                 )),
               );
