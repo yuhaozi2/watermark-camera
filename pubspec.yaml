@@ -17,6 +17,7 @@ dependencies:
   pdf: 3.11.3
   url_launcher: ^6.3.0
   http: ^1.2.0
+  image: 4.5.4
   nfc_manager: ^3.4.0
   ffmpeg_kit_flutter_new_min: ^3.6.7
 
