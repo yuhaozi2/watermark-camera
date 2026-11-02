@@ -50,6 +50,8 @@ Future<Map<String, String>> fetchPlaceAndWeather(double lat, double lng) async {
       final name = (data['name'] ?? '').toString();
       if (name.isNotEmpty && !parts.contains(name)) parts.add(name);
       if (parts.isNotEmpty) result['place'] = parts.join('');
+      // 地名本身（截图样式里蓝色标题条用的就是地点名，不是整段地址）
+      if (name.isNotEmpty) result['placeName'] = name;
     }
   } catch (_) {}
   try {
@@ -184,8 +186,42 @@ Widget buildWatermarkBar({
   required bool simple,
   String antiFraudCode = '',
   String brandImagePath = '',
+  bool originalStyle = false,
+  String originalTitle = '',
 }) {
   if (lines.isEmpty) return const SizedBox.shrink();
+  // 截图样式：左下角窄框，蓝色地点标题条 + 深色半透明主体（不画白条、不放 Logo 占位）
+  if (originalStyle && !simple) {
+    return FractionallySizedBox(
+      widthFactor: 0.46,
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: double.infinity,
+            color: themeColor,
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Text(originalTitle.isNotEmpty ? originalTitle : '水印', style: TextStyle(color: Colors.white, fontSize: fontSize, fontWeight: FontWeight.bold)),
+          ),
+          Container(
+            width: double.infinity,
+            color: Colors.black.withOpacity(0.55),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < lines.length; i++)
+                  Text(lines[i], style: TextStyle(color: Colors.white, fontSize: fontSize - 2, fontWeight: i == 0 ? FontWeight.bold : FontWeight.normal, height: 1.5)),
+                if (antiFraudCode.isNotEmpty) Text('防伪码 $antiFraudCode', style: TextStyle(color: Colors.white70, fontSize: fontSize - 3, height: 1.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
   if (simple) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -278,6 +314,44 @@ String formatNow() {
   return '${d.year}-${p(d.month)}-${p(d.day)} ${p(d.hour)}:${p(d.minute)}:${p(d.second)} ${week[d.weekday % 7]}';
 }
 
+// 截图样式的日期：formatNow 是“2026-11-02 09:10:33 星期一”，原版显示“2026-11-02 星期一 09:10”
+String formatOriginalDateTime(String timeText) {
+  final parts = timeText.split(' ');
+  if (parts.length < 2) return timeText;
+  final hm = parts[1].split(':');
+  if (hm.length < 2) return timeText;
+  final weekday = parts.length >= 3 ? parts[2] : '';
+  return weekday.isEmpty ? '${parts[0]} ${hm[0]}:${hm[1]}' : '${parts[0]} $weekday ${hm[0]}:${hm[1]}';
+}
+
+// 截图样式的经纬度：6 位小数、逗号无空格，如 37.425277,122.179207
+String formatCoords6(String locationText) {
+  final parts = locationText.split(',');
+  if (parts.length != 2) return locationText;
+  final lat = double.tryParse(parts[0].trim());
+  final lng = double.tryParse(parts[1].trim());
+  if (lat == null || lng == null) return locationText;
+  return '${lat.toStringAsFixed(6)},${lng.toStringAsFixed(6)}';
+}
+
+// 截图样式的水印行（蓝色标题条之外的主体行，顺序按截图）：日期、拍照人、地点、海拔、经纬度、备注
+List<String> buildOriginalStyleLines({
+  required String timeText,
+  required String photographer,
+  required String address,
+  required String altitudeText,
+  required String locationText,
+  required String remark,
+}) {
+  final out = <String>[formatOriginalDateTime(timeText)];
+  if (photographer.isNotEmpty) out.add('拍照人：$photographer');
+  if (address.isNotEmpty) out.add('地点：$address');
+  if (altitudeText.isNotEmpty) out.add('海拔：$altitudeText');
+  if (locationText.isNotEmpty) out.add('经纬度：${formatCoords6(locationText)}');
+  out.add('备注：${remark.isNotEmpty ? remark : '请输入内容'}');
+  return out;
+}
+
 class WatermarkCameraPage extends StatefulWidget {
   const WatermarkCameraPage({super.key});
   @override
@@ -299,6 +373,11 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String timeText = '';
   String teamName = '';
   String brandLogoPath = '';
+  String photographerName = '';
+  String altitudeText = '';
+  String placeNameText = '';
+  bool originalStyle = true;
+  final photographerController = TextEditingController();
   Timer? _clock;
   final Map<String, String> fieldValues = {};
   Color watermarkColor = Colors.white;
@@ -406,6 +485,8 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
     timeText = formatNow();
     loadTeamName().then((v) { if (mounted) setState(() => teamName = v); });
     loadBrandLogoPath().then((v) { if (mounted) setState(() => brandLogoPath = v); });
+    loadPhotographerName().then((v) { if (mounted) setState(() { photographerName = v; photographerController.text = v; }); });
+    loadOriginalStyle().then((v) { if (mounted) setState(() => originalStyle = v); });
     // 取景和预览里的时间每秒刷新，拍到的就是当前时间，不是打开页面的时间
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => timeText = formatNow());
@@ -415,6 +496,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   @override
   void dispose() {
     _clock?.cancel();
+    photographerController.dispose();
     super.dispose();
   }
 
@@ -432,12 +514,16 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
     }
     final pos = await Geolocator.getCurrentPosition();
     final coord = '${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)}';
-    setState(() => locationText = coord);
+    setState(() {
+      locationText = coord;
+      altitudeText = '${pos.altitude.toStringAsFixed(1)}米';
+    });
     // 定位成功后顺手补地点名称和天气（公开服务，失败就只留经纬度，不报错打断拍照）
     final extra = await fetchPlaceAndWeather(pos.latitude, pos.longitude);
     if (mounted) {
       setState(() {
         if ((extra['place'] ?? '').isNotEmpty) placeText = extra['place']!;
+        if ((extra['placeName'] ?? '').isNotEmpty) placeNameText = extra['placeName']!;
         if ((extra['weather'] ?? '').isNotEmpty) weatherText = extra['weather']!;
       });
       if ((extra['place'] ?? '').isNotEmpty || (extra['weather'] ?? '').isNotEmpty) {
@@ -528,13 +614,15 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                       left: 0, right: 0,
                       top: isBottom ? null : 0, bottom: isBottom ? 0 : null,
                       child: buildWatermarkBar(
-                        lines: lines(),
+                        lines: originalStyle ? buildOriginalStyleLines(timeText: timeText, photographer: photographerName, address: placeText, altitudeText: altitudeText, locationText: locationText, remark: remark) : lines(),
                         themeColor: barTheme,
                         fontSize: watermarkSize,
                         opacity: watermarkOpacity,
                         simple: template == '简洁水印',
                         antiFraudCode: antiFraudCode('$timeText|$locationText'),
                         brandImagePath: brandLogoPath,
+                        originalStyle: originalStyle,
+                        originalTitle: placeNameText.isNotEmpty ? placeNameText : (spec?.defaultTitle ?? template),
                       ),
                     ),
                 ]),
@@ -587,6 +675,8 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
           TextField(decoration: const InputDecoration(labelText: '地点名称（定位后自动解析，可手改）'), controller: TextEditingController(text: placeText), onChanged: (v) => setState(() => placeText = v)),
           TextField(decoration: const InputDecoration(labelText: '天气（定位后自动填，可手改）'), controller: TextEditingController(text: weatherText), onChanged: (v) => setState(() => weatherText = v)),
           TextField(decoration: const InputDecoration(labelText: '备注（人员等）'), onChanged: (v) => setState(() => remark = v)),
+          TextField(controller: photographerController, decoration: const InputDecoration(labelText: '拍照人（截图样式里显示，如于志浩）'), onChanged: (v) { setState(() => photographerName = v); savePhotographerName(v); }),
+          Row(children: [const Text('原版深色水印'), Switch(value: originalStyle, onChanged: (v) { setState(() => originalStyle = v); saveOriginalStyle(v); }), const Text('（截图样式：左下角深色框+蓝色地点条）')]),
           const SizedBox(height: 8),
           const Text('水印位置'),
           Wrap(spacing: 8, children: [
@@ -645,6 +735,10 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   teamName: teamName,
                   placeText: placeText,
                   brandLogoPath: brandLogoPath,
+                  photographerName: photographerName,
+                  altitudeText: altitudeText,
+                  placeNameText: placeNameText,
+                  originalStyle: originalStyle,
                 )),
               );
               if (file != null && mounted) setState(() { image = file; timeText = formatNow(); });
@@ -667,6 +761,10 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
                   teamName: teamName,
                   placeText: placeText,
                   brandLogoPath: brandLogoPath,
+                  photographerName: photographerName,
+                  altitudeText: altitudeText,
+                  placeNameText: placeNameText,
+                  originalStyle: originalStyle,
                 )),
               );
             },
