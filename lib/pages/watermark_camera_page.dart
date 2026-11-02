@@ -12,6 +12,8 @@ import 'puzzle_page.dart';
 import 'live_camera_page.dart';
 import 'video_watermark_page.dart';
 import 'workbench_page.dart';
+import 'gallery_page.dart';
+import 'package:image/image.dart' as imgLib;
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -305,9 +307,57 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
   String ratio = '4:3';
   bool showGrid = false;
   String photoFilter = '原图';
+  // 编辑滑杆：动了滑杆就进入自定义效果（芯片点一下会把滑杆归零，恢复该滤镜）
+  double editBrightness = 0; // -50..50，直接做矩阵偏移
+  double editContrast = 1.0; // 0.5..1.5
+  double editSaturation = 1.0; // 0..2
+  bool get _hasCustomEdit => editBrightness != 0 || editContrast != 1.0 || editSaturation != 1.0;
+
+  // 4x5 颜色矩阵相乘（最后一行固定 0,0,0,0,1）
+  List<double> _mulMatrix(List<double> a, List<double> b) {
+    final out = List<double>.filled(20, 0);
+    for (var r = 0; r < 4; r++) {
+      for (var c = 0; c < 5; c++) {
+        var sum = 0.0;
+        for (var k = 0; k < 4; k++) {
+          sum += a[r * 5 + k] * b[k * 5 + c];
+        }
+        if (c == 4) sum += a[r * 5 + 4];
+        out[r * 5 + c] = sum;
+      }
+    }
+    return out;
+  }
+
+  List<double> get _customEditMatrix {
+    const lumR = 0.299, lumG = 0.587, lumB = 0.114;
+    final s = editSaturation;
+    final sat = <double>[
+      lumR * (1 - s) + s, lumG * (1 - s), lumB * (1 - s), 0, 0,
+      lumR * (1 - s), lumG * (1 - s) + s, lumB * (1 - s), 0, 0,
+      lumR * (1 - s), lumG * (1 - s), lumB * (1 - s) + s, 0, 0,
+      0, 0, 0, 1, 0,
+    ];
+    final c = editContrast;
+    final con = <double>[
+      c, 0, 0, 0, (1 - c) * 128,
+      0, c, 0, 0, (1 - c) * 128,
+      0, 0, c, 0, (1 - c) * 128,
+      0, 0, 0, 1, 0,
+    ];
+    final b = editBrightness;
+    final bri = <double>[
+      1, 0, 0, 0, b,
+      0, 1, 0, 0, b,
+      0, 0, 1, 0, b,
+      0, 0, 0, 1, 0,
+    ];
+    return _mulMatrix(bri, _mulMatrix(con, sat));
+  }
 
   // 照片滤镜：在预览图上套 ColorFiltered，生成时 RepaintBoundary 一并烧入成图
   ColorFilter? get photoColorFilter {
+    if (_hasCustomEdit) return ColorFilter.matrix(_customEditMatrix);
     switch (photoFilter) {
       case '黑白':
         return const ColorFilter.matrix(<double>[0.299, 0.587, 0.114, 0, 0, 0.299, 0.587, 0.114, 0, 0, 0.299, 0.587, 0.114, 0, 0, 0, 0, 0, 1, 0]);
@@ -317,6 +367,25 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
         return const ColorFilter.matrix(<double>[0.9, 0, 0, 0, 0, 0, 1.0, 0, 0, 0, 0, 0, 1.15, 0, 10, 0, 0, 0, 1, 0]);
       default:
         return null;
+    }
+  }
+
+  // 旋转 90°：用 image 包真转出一张新文件，原图不动，预览和生成都用转后的版本
+  Future<void> rotateImage() async {
+    final src = image;
+    if (src == null) return;
+    try {
+      final bytes = await src.readAsBytes();
+      final decoded = imgLib.decodeImage(bytes);
+      if (decoded == null) return;
+      final rotated = imgLib.copyRotate(decoded, angle: 90);
+      final dir = await getTemporaryDirectory();
+      final isPng = src.path.toLowerCase().endsWith('.png');
+      final out = File('${dir.path}/rotated_${DateTime.now().millisecondsSinceEpoch}.${isPng ? 'png' : 'jpg'}');
+      await out.writeAsBytes(isPng ? imgLib.encodePng(rotated) : imgLib.encodeJpg(rotated, quality: 92));
+      if (mounted) setState(() => image = out);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('旋转失败：$e')));
     }
   }
 
@@ -399,6 +468,13 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/watermark_${DateTime.now().millisecondsSinceEpoch}.png');
       await file.writeAsBytes(bytes.buffer.asUint8List());
+      // 同步存一份到本地相册目录，App 里“相册”随时能翻出来（存档失败不影响分享）
+      try {
+        final docs = await getApplicationDocumentsDirectory();
+        final galleryDir = Directory('${docs.path}/wm_photos');
+        if (!await galleryDir.exists()) await galleryDir.create(recursive: true);
+        await file.copy('${galleryDir.path}/watermark_${DateTime.now().millisecondsSinceEpoch}.png');
+      } catch (_) {}
       await recordAttendance(template: template, location: locationText, antiFraud: antiFraudCode('$timeText|$locationText'));
       await Share.shareXFiles([XFile(file.path)], text: '水印照片');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已生成，可在分享面板里保存到相册')));
@@ -420,6 +496,7 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
       appBar: AppBar(title: Text('水印相机 · ${spec?.defaultTitle ?? template}'), backgroundColor: themeColor, foregroundColor: Colors.white,
         actions: [
           TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PuzzlePage())), child: const Text('拼图模式', style: TextStyle(color: Colors.white))),
+          TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GalleryPage())), child: const Text('相册', style: TextStyle(color: Colors.white))),
           TextButton(
             onPressed: () async {
               await Navigator.push(context, MaterialPageRoute(builder: (_) => const WorkbenchPage()));
@@ -536,9 +613,20 @@ class _WatermarkCameraPageState extends State<WatermarkCameraPage> {
             for (final f in ['原图', '黑白', '暖色', '冷色'])
               Padding(
                 padding: const EdgeInsets.only(right: 6),
-                child: ChoiceChip(label: Text(f), selected: photoFilter == f, onSelected: (_) => setState(() => photoFilter = f)),
+                child: ChoiceChip(label: Text(f), selected: photoFilter == f && !_hasCustomEdit, onSelected: (_) => setState(() { photoFilter = f; editBrightness = 0; editContrast = 1.0; editSaturation = 1.0; })),
               ),
           ]),
+          Row(children: [
+            const Text('编辑'),
+            const SizedBox(width: 8),
+            ElevatedButton(onPressed: image == null ? null : rotateImage, child: const Text('旋转 90°')),
+            const SizedBox(width: 8),
+            TextButton(onPressed: () => setState(() { photoFilter = '原图'; editBrightness = 0; editContrast = 1.0; editSaturation = 1.0; }), child: const Text('恢复原图效果')),
+          ]),
+          Row(children: [const Text('亮度'), Expanded(child: Slider(value: editBrightness, min: -50, max: 50, onChanged: (v) => setState(() => editBrightness = v))), Text(editBrightness.toStringAsFixed(0))]),
+          Row(children: [const Text('对比度'), Expanded(child: Slider(value: editContrast, min: 0.5, max: 1.5, onChanged: (v) => setState(() => editContrast = v))), Text(editContrast.toStringAsFixed(2))]),
+          Row(children: [const Text('饱和度'), Expanded(child: Slider(value: editSaturation, min: 0, max: 2, onChanged: (v) => setState(() => editSaturation = v))), Text(editSaturation.toStringAsFixed(2))]),
+          const Text('说明：滤镜和编辑滑杆的效果在预览里就能看到，生成时一并烧进成图；旋转会真转出一张新图，原图不动。', style: TextStyle(color: Colors.grey, fontSize: 12)),
           if (locationText.contains(','))
             TextButton(onPressed: openMap, child: const Text('在地图上查看定位点')),
           const SizedBox(height: 16),
