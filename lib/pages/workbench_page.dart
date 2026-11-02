@@ -37,7 +37,19 @@ Future<String> loadBrandLogoPath() async {
 // 拍照人（截图样式里的“拍照人：”）和原版深色水印开关，存在偏好里，重启后还在。
 Future<String> loadPhotographerName() async {
   final prefs = await SharedPreferences.getInstance();
+  // 从没填过时，默认用截图里的拍照人；用户改过一次之后就以用户填的为准（哪怕清空）
+  if (!prefs.containsKey('wm_photographer')) return '于志浩';
   return prefs.getString('wm_photographer') ?? '';
+}
+
+Future<String> loadPlaceTitleOverride() async {
+  final prefs = await SharedPreferences.getInstance();
+  return prefs.getString('wm_place_title') ?? '';
+}
+
+Future<void> savePlaceTitleOverride(String v) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('wm_place_title', v);
 }
 
 Future<void> savePhotographerName(String v) async {
